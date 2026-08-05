@@ -1,0 +1,22 @@
+# Claude Code local data / plugin caches
+.claude/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.log
+
+# Flutter/Dart build output (app/ has its own .gitignore too)
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+**/.gradle/
+**/*.iml
+
+# Local env / secrets (never commit API keys)
+*.env
+.env*
+**/local.properties
+android/key.properties
