@@ -15,5 +15,7 @@ void main() {
     // First frame — logo + wordmark are present before navigation fires.
     expect(find.text('WakeMate'), findsOneWidget);
     expect(find.text('Never miss your stop'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
   });
 }

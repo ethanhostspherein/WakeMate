@@ -1,8 +1,10 @@
 import 'package:go_router/go_router.dart';
 
 import '../features/alarm/alarm_screen.dart';
+import '../features/auth/login_screen.dart';
 import '../features/history/history_screen.dart';
 import '../features/home/home_screen.dart';
+import '../features/legal/legal_screen.dart';
 import '../features/onboarding/onboarding_screen.dart';
 import '../features/permissions/permission_screen.dart';
 import '../features/search/destination_search_screen.dart';
@@ -20,6 +22,7 @@ class Routes {
 
   static const splash = '/';
   static const onboarding = '/onboarding';
+  static const login = '/login';
   static const permissions = '/permissions';
   static const home = '/home';
   static const search = '/search';
@@ -29,6 +32,8 @@ class Routes {
   static const history = '/history';
   static const settings = '/settings';
   static const sharedTrip = '/shared-trip';
+  static const privacyPolicy = '/privacy-policy';
+  static const termsOfService = '/terms-of-service';
 }
 
 final appRouter = GoRouter(
@@ -41,6 +46,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: Routes.onboarding,
       builder: (context, state) => const OnboardingScreen(),
+    ),
+    GoRoute(
+      path: Routes.login,
+      builder: (context, state) => const LoginScreen(),
     ),
     GoRoute(
       path: Routes.permissions,
@@ -78,6 +87,14 @@ final appRouter = GoRouter(
       path: Routes.sharedTrip,
       builder: (context, state) =>
           SharedTripScreen(ticket: state.extra as ParsedTicket),
+    ),
+    GoRoute(
+      path: Routes.privacyPolicy,
+      builder: (context, state) => const PrivacyPolicyScreen(),
+    ),
+    GoRoute(
+      path: Routes.termsOfService,
+      builder: (context, state) => const TermsOfServiceScreen(),
     ),
   ],
 );

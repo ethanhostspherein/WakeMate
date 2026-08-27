@@ -1,8 +1,13 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../models/active_trip.dart';
+import '../../models/destination.dart';
 import '../../routing/app_router.dart';
 import '../../state/tracking_provider.dart';
 import '../../theme/app_colors.dart';
@@ -21,23 +26,36 @@ class AlarmScreen extends ConsumerStatefulWidget {
 }
 
 class _AlarmScreenState extends ConsumerState<AlarmScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _pulse = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1100),
   )..repeat(reverse: true);
 
+  // Dismiss requires a 2s hold, not a tap — guards against a half-asleep
+  // reflex tap silencing the alarm before the rider actually wakes up.
+  late final AnimationController _hold = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 2),
+  )..addStatusListener((status) {
+      if (status == AnimationStatus.completed) _dismiss();
+    });
+
   @override
   void dispose() {
     _pulse.dispose();
+    _hold.dispose();
     super.dispose();
   }
 
   Future<void> _dismiss() async {
     // Ends the trip → Journey Complete → History (App Flow §2).
-    final destName =
-        ref.read(trackingProvider).trip?.destination.placeName ?? 'your stop';
+    final trip = ref.read(trackingProvider).trip;
+    final destName = trip?.destination.placeName ?? 'your stop';
     await ref.read(trackingProvider.notifier).dismiss();
+    if (trip != null && trip.notifyFamily) {
+      await _notifyFamily(trip);
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -45,7 +63,88 @@ class _AlarmScreenState extends ConsumerState<AlarmScreen>
         backgroundColor: AppColors.success,
       ),
     );
+    if (trip != null) await _showQuickActions(trip.destination);
+    if (!mounted) return;
     context.go(Routes.home);
+  }
+
+  /// Post-arrival quick actions — offered right after dismiss, while the
+  /// user still has the app open.
+  Future<void> _showQuickActions(Destination destination) {
+    final destName = destination.placeName;
+    return showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("You've arrived", style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: AppSpacing.xs),
+            Text('Need a ride from $destName?',
+                style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.local_taxi_rounded),
+                    label: const Text('Uber'),
+                    onPressed: () => _bookCab('Uber', destination),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.local_taxi_rounded),
+                    label: const Text('Ola'),
+                    onPressed: () => _bookCab('Ola', destination),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Not now'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _bookCab(String provider, Destination destination) async {
+    // Uber has no app-only scheme anymore — its universal link opens the
+    // app directly (Android/iOS App Links) if installed, browser if not.
+    // Ola's app scheme isn't officially documented; best-effort with a
+    // Play Store fallback if the app isn't there to catch it.
+    final Uri primary = provider == 'Uber'
+        ? Uri.parse('https://m.uber.com/ul/?action=setPickup&pickup=my_location'
+            '&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}'
+            '&dropoff[nickname]=${Uri.encodeComponent(destination.placeName)}')
+        : Uri.parse('olacabs://app/launch');
+    final fallbackPackage = provider == 'Uber' ? 'com.ubercab' : 'com.olacabs.customer';
+
+    var launched = await launchUrl(primary, mode: LaunchMode.externalApplication);
+    if (!launched) {
+      launched = await launchUrl(
+          Uri.parse('https://play.google.com/store/apps/details?id=$fallbackPackage'),
+          mode: LaunchMode.externalApplication);
+    }
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open $provider.')),
+      );
+    }
   }
 
   Future<void> _snooze() async {
@@ -61,10 +160,43 @@ class _AlarmScreenState extends ConsumerState<AlarmScreen>
     context.pop();
   }
 
+  Future<void> _notifyFamily(ActiveTrip trip) async {
+    final phone = trip.familyContactPhone?.trim();
+    if (phone == null || phone.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No family contact saved for this trip.')),
+      );
+      return;
+    }
+
+    final destName = trip.destination.placeName;
+    final digits = phone.replaceAll(RegExp(r'[^\d+]'), '');
+    final message =
+        'WakeMate alert: I may have missed my stop near $destName. Please check on me.';
+
+    // wa.me / sms: deep links only pre-fill the message — the platform
+    // requires a final manual tap inside WhatsApp/Messages to actually send.
+    final uri = trip.familyChannel == 'sms'
+        ? (Platform.isIOS
+            ? Uri.parse('sms:$digits&body=${Uri.encodeComponent(message)}')
+            : Uri(scheme: 'sms', path: digits, queryParameters: {'body': message}))
+        : Uri.parse(
+            'https://wa.me/${digits.replaceAll('+', '')}?text=${Uri.encodeComponent(message)}');
+
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open messaging app.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final destName =
-        ref.watch(trackingProvider).trip?.destination.placeName ?? 'your stop';
+    final trackingState = ref.watch(trackingProvider);
+    final destName = trackingState.trip?.destination.placeName ?? 'your stop';
+    final missedStop = trackingState.missedStop;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
@@ -110,12 +242,56 @@ class _AlarmScreenState extends ConsumerState<AlarmScreen>
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  if (missedStop) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
+                      ),
+                      child: Column(
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.warning_rounded, color: Colors.white),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'You may have passed your stop',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          SizedBox(
+                            width: double.infinity,
+                            child: TextButton.icon(
+                              onPressed: () {
+                                final trip = ref.read(trackingProvider).trip;
+                                if (trip != null) _notifyFamily(trip);
+                              },
+                              icon: const Icon(Icons.message_rounded, color: Colors.white),
+                              label: const Text('Notify family',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                  ],
                   const Spacer(),
-                  _AlarmButton(
-                    label: 'Dismiss',
+                  _HoldButton(
+                    label: 'Hold to dismiss',
                     icon: Icons.check_rounded,
-                    filled: true,
-                    onTap: _dismiss,
+                    progress: _hold,
+                    onHoldStart: () => _hold.forward(),
+                    onHoldEnd: () => _hold.reverse(),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   _AlarmButton(
@@ -129,6 +305,79 @@ class _AlarmScreenState extends ConsumerState<AlarmScreen>
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoldButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Animation<double> progress;
+  final VoidCallback onHoldStart;
+  final VoidCallback onHoldEnd;
+
+  const _HoldButton({
+    required this.label,
+    required this.icon,
+    required this.progress,
+    required this.onHoldStart,
+    required this.onHoldEnd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => onHoldStart(),
+      onTapUp: (_) => onHoldEnd(),
+      onTapCancel: onHoldEnd,
+      child: SizedBox(
+        width: double.infinity,
+        height: AppSpacing.alarmTouchTarget + 8,
+        child: AnimatedBuilder(
+          animation: progress,
+          builder: (context, _) {
+            final filled = progress.value > 0.5;
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                  ),
+                  FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: progress.value,
+                    child: Container(color: Colors.white),
+                  ),
+                  Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon,
+                            size: 26,
+                            color: filled ? AppColors.alarmEnd : Colors.white),
+                        const SizedBox(width: 10),
+                        Text(
+                          progress.value > 0.02 ? 'Keep holding…' : label,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: filled ? AppColors.alarmEnd : Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );

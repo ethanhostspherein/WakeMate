@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../models/alarm_settings.dart';
+import '../../routing/app_router.dart';
+import '../../services/supabase_auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../widgets/wakemate_logo.dart';
 
 /// Settings / Profile — account info, default sound/volume/units, permission
-/// shortcuts, premium entry point, and policy links. UI/UX Brief §3.10.
+/// shortcuts, premium entry point, policy links, real-time auth sign-out & guest sign-in.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -19,15 +22,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _metric = true;
   bool _vibrate = true;
   String _sound = AlarmSettings.defaults.soundId;
+  final _auth = SupabaseAuthService.instance;
+
+  Future<void> _handleSignOut() async {
+    await _auth.signOut();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Signed out successfully.'),
+        backgroundColor: AppColors.primary,
+      ),
+    );
+    context.go(Routes.login);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final user = _auth.currentUser;
+    final isAuthenticated = _auth.isAuthenticated;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const Text('Settings & Profile')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.screenPadding),
         children: [
-          _ProfileCard(),
+          _ProfileCard(
+            userEmail: user?.email,
+            isAuthenticated: isAuthenticated,
+            onSignIn: () => context.go(Routes.login),
+            onSignOut: _handleSignOut,
+          ),
           const SizedBox(height: AppSpacing.lg),
           _SectionLabel('Alarm defaults'),
           _Tile(
@@ -65,6 +89,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: openAppSettings,
           ),
           const SizedBox(height: AppSpacing.lg),
+          _SectionLabel('App Tour'),
+          _Tile(
+            icon: Icons.slideshow_rounded,
+            title: 'Re-watch Onboarding',
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => context.go(Routes.onboarding),
+          ),
+          const SizedBox(height: AppSpacing.lg),
           _SectionLabel('WakeMate Premium'),
           _PremiumCard(),
           const SizedBox(height: AppSpacing.lg),
@@ -72,25 +104,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _Tile(
               icon: Icons.privacy_tip_rounded,
               title: 'Privacy policy',
-              trailing: const Icon(Icons.open_in_new_rounded),
-              onTap: () {}),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.push(Routes.privacyPolicy)),
           _Tile(
               icon: Icons.description_rounded,
               title: 'Terms of service',
-              trailing: const Icon(Icons.open_in_new_rounded),
-              onTap: () {}),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.push(Routes.termsOfService)),
           const SizedBox(height: AppSpacing.lg),
           Center(
-            child: Text('WakeMate v0.1.0 · Phase 1',
+            child: Text('WakeMate v1.0.0',
                 style: Theme.of(context).textTheme.labelMedium),
           ),
           const SizedBox(height: AppSpacing.md),
-          TextButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.logout_rounded, color: AppColors.danger),
-            label: const Text('Sign out',
-                style: TextStyle(color: AppColors.danger)),
-          ),
+
+          if (isAuthenticated) ...[
+            TextButton.icon(
+              onPressed: _handleSignOut,
+              icon: const Icon(Icons.logout_rounded, color: AppColors.danger),
+              label: const Text(
+                'Sign out of account',
+                style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ] else ...[
+            TextButton.icon(
+              onPressed: () => context.go(Routes.login),
+              icon: const Icon(Icons.login_rounded, color: AppColors.accent),
+              label: const Text(
+                'Sign in with Email',
+                style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+          const SizedBox(height: AppSpacing.xl),
         ],
       ),
     );
@@ -124,6 +171,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 class _ProfileCard extends StatelessWidget {
+  final String? userEmail;
+  final bool isAuthenticated;
+  final VoidCallback onSignIn;
+  final VoidCallback onSignOut;
+
+  const _ProfileCard({
+    required this.userEmail,
+    required this.isAuthenticated,
+    required this.onSignIn,
+    required this.onSignOut,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -135,22 +194,55 @@ class _ProfileCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const CircleAvatar(
+          CircleAvatar(
             radius: 26,
-            backgroundColor: AppColors.accentSoft,
-            child: Icon(Icons.person_rounded, color: AppColors.accent),
+            backgroundColor: isAuthenticated ? AppColors.accentSoft : AppColors.border,
+            child: Icon(
+              isAuthenticated ? Icons.person_rounded : Icons.person_outline_rounded,
+              color: isAuthenticated ? AppColors.accent : AppColors.textSecondary,
+            ),
           ),
           const SizedBox(width: AppSpacing.sm),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Guest', style: Theme.of(context).textTheme.titleMedium),
-              Text('Local-only · no sync',
-                  style: Theme.of(context).textTheme.labelMedium),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isAuthenticated ? (userEmail ?? 'Logged In User') : 'Guest Mode',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  isAuthenticated ? 'Account active · Cloud sync' : 'Local-only · No sync',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: isAuthenticated ? AppColors.success : AppColors.textSecondary,
+                      ),
+                ),
+              ],
+            ),
           ),
-          const Spacer(),
-          OutlinedButton(onPressed: () {}, child: const Text('Sign in')),
+          const SizedBox(width: AppSpacing.xs),
+          if (isAuthenticated) ...[
+            OutlinedButton(
+              onPressed: onSignOut,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.danger,
+                side: const BorderSide(color: AppColors.danger),
+              ),
+              child: const Text('Sign out'),
+            ),
+          ] else ...[
+            ElevatedButton(
+              onPressed: onSignIn,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Sign in'),
+            ),
+          ],
         ],
       ),
     );

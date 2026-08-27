@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../core/geo_math.dart';
 import '../models/destination.dart';
 
 /// Keyless place search via OpenStreetMap's Nominatim API — the cost-control
@@ -18,26 +19,54 @@ class GeocodingService {
   };
 
   /// Search places by free-text query. India-biased to match the target users.
-  Future<List<Destination>> search(String query, {int limit = 6}) async {
+  /// If userLat and userLng are provided, results are sorted by nearest proximity.
+  Future<List<Destination>> search(
+    String query, {
+    int limit = 10,
+    double? userLat,
+    double? userLng,
+  }) async {
     final q = query.trim();
     if (q.isEmpty) return [];
-    final uri = Uri.parse(_base).replace(queryParameters: {
+    final params = <String, String>{
       'q': q,
       'format': 'jsonv2',
       'addressdetails': '1',
       'limit': '$limit',
       'countrycodes': 'in',
-    });
+    };
+
+    if (userLat != null && userLng != null) {
+      // Add viewbox surrounding user location for Nominatim search biasing
+      final delta = 1.0;
+      params['viewbox'] =
+          '${userLng - delta},${userLat + delta},${userLng + delta},${userLat - delta}';
+    }
+
+    final uri = Uri.parse(_base).replace(queryParameters: params);
     try {
       final res = await http
           .get(uri, headers: _headers)
           .timeout(const Duration(seconds: 10));
       if (res.statusCode != 200) return [];
       final data = jsonDecode(res.body) as List<dynamic>;
-      return data
+      var results = data
           .map((e) => _toDestination(e as Map<String, dynamic>))
           .whereType<Destination>()
           .toList();
+
+      if (userLat != null && userLng != null) {
+        results = results.map((d) {
+          final dist = GeoMath.distanceKm(userLat, userLng, d.lat, d.lng);
+          return d.copyWith(distanceFromUserKm: dist);
+        }).toList();
+
+        // Sort nearest to user location first
+        results.sort((a, b) => (a.distanceFromUserKm ?? double.infinity)
+            .compareTo(b.distanceFromUserKm ?? double.infinity));
+      }
+
+      return results;
     } catch (_) {
       return [];
     }

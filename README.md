@@ -14,7 +14,7 @@ Built India-first: destination alarms today, with PNR-linked train tracking, reg
 | Location | geolocator (foreground-service background tracking) |
 | Alarm | flutter_local_notifications (full-screen intent) + audioplayers on the ALARM stream + native `AudioManager` max-volume channel |
 | Geocoding | OpenStreetMap / Nominatim (keyless) |
-| Backend (planned) | Node.js + Express + MongoDB |
+| Backend | **Supabase** (Postgres + Auth + Row Level Security) |
 
 > Note: the client is Flutter. The original planning docs specify React Native/Expo — that was superseded; only the client framework changed.
 
@@ -33,6 +33,7 @@ WakeMate/
 │  │  └─ routing/           # go_router
 │  ├─ android/              # incl. native alarm platform channel (Kotlin)
 │  └─ assets/sounds/        # bundled alarm tones (offline-safe)
+├─ backend/sql/             # Supabase schema & migrations (reference only — no server runs here)
 └─ *.md                     # PRD, TRD, UI/UX, backend schema, implementation plan
 ```
 
@@ -40,9 +41,11 @@ WakeMate/
 
 - **Phase 1 — Core UI & foundation:** ✅ complete (all screens, design system, navigation).
 - **Phase 2 — Tracking + alarm engine:** ✅ complete (background location foreground service, adaptive polling, on-device distance/ETA, full-volume native alarm over silent/DND, trip persistence + restart recovery, battery-optimization detection).
-- **Trip intake:** ✅ Share-to-WakeMate (share a ticket → parse PNR/destination/departure → geocode → confirm) and arm-at-departure scheduling. ⏳ PNR live tracking (needs the backend + a rail API).
-- **Phase 3 — Backend (Node/Express + MongoDB):** ⏳ planned — auth, trip/favorites/history sync, offline queue, PNR lookup.
-- **Phase 4 — Testing, monetization, store readiness:** ⏳ planned.
+- **Trip intake:** ✅ Share-to-WakeMate (share a ticket → parse PNR/destination/departure → geocode → confirm) and arm-at-departure scheduling. ⏳ PNR live tracking (needs a rail API).
+- **Phase 3 — Backend (Supabase):** ✅ auth, trip/favorites/history sync live. ⏳ offline queue, PNR lookup.
+- **Reliability & engagement features** (missed-stop escalation, motion-confirmed dismiss, automatic family arrival notification over WhatsApp/SMS, live ETA share link, weather-at-destination nudge, home-screen widget): ✅ complete — see `WakeMate_Implementation_Plan.md` §6 for the full list.
+- **In-app Privacy Policy & Terms of Service:** ✅ complete.
+- **Phase 4 — Testing, monetization, store readiness:** ⏳ in progress — draft Play Store listing copy and screenshot prompts ready; still need a signed release build, store graphics, and a hosted privacy policy URL. See `WakeMate_Implementation_Plan.md` §8.
 
 ## Running the app
 

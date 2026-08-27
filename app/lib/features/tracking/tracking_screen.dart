@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/active_trip.dart';
 import '../../routing/app_router.dart';
 import '../../services/battery_optimization.dart';
+import '../../services/trip_share_service.dart';
 import '../../state/tracking_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -35,9 +37,13 @@ class TrackingScreen extends ConsumerWidget {
     return Scaffold(
       body: Stack(
         children: [
-          const Positioned.fill(
+          Positioned.fill(
             child: MapPreview(
               height: double.infinity,
+              lat: trip?.destination.lat ?? 26.9124,
+              lng: trip?.destination.lng ?? 75.7873,
+              startLat: state.currentLat ?? trip?.startLat,
+              startLng: state.currentLng ?? trip?.startLng,
               showRoute: true,
               borderRadius: BorderRadius.zero,
             ),
@@ -51,16 +57,26 @@ class TrackingScreen extends ConsumerWidget {
                     children: [
                       _CircleButton(
                         icon: Icons.arrow_back_rounded,
-                        onTap: () => context.pop(),
+                        onTap: () => context.go(Routes.home),
                       ),
                       const Spacer(),
+                      _CircleButton(
+                        icon: Icons.share_rounded,
+                        onTap: () => _showShareSheet(context, ref),
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
                       const _TrackingChip(),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   const Align(
                     alignment: Alignment.centerRight,
-                    child: _BatteryWarningChip(),
+                    child: _ReliabilityChip(),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  const Align(
+                    alignment: Alignment.centerRight,
+                    child: _GuardianStatusLine(),
                   ),
                 ],
               ),
@@ -108,6 +124,77 @@ class TrackingScreen extends ConsumerWidget {
       if (context.mounted) context.go(Routes.home);
     }
   }
+
+  /// Live ETA share link — generate (or reuse) a token and show the link
+  /// with a copy button. Family opens it in a plain browser, no app needed.
+  Future<void> _showShareSheet(BuildContext context, WidgetRef ref) async {
+    final notifier = ref.read(trackingProvider.notifier);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: FutureBuilder<String?>(
+          future: notifier.startShare(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData && snapshot.connectionState == ConnectionState.waiting) {
+              return const SizedBox(
+                height: 100,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            final token = snapshot.data;
+            if (token == null) {
+              return const SizedBox(
+                height: 100,
+                child: Center(
+                  child: Text('Sign in to share your live location.'),
+                ),
+              );
+            }
+            final link = TripShareService.linkFor(token);
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Share live location',
+                    style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: AppSpacing.xs),
+                const Text('Anyone with this link can watch your ETA, no app needed.'),
+                const SizedBox(height: AppSpacing.md),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: AppColors.border),
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  ),
+                  child: Text(link, style: Theme.of(context).textTheme.bodySmall),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.copy_rounded),
+                    label: const Text('Copy link'),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: link));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Link copied')),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
 }
 
 class _TrackingChip extends StatelessWidget {
@@ -138,58 +225,105 @@ class _TrackingChip extends StatelessWidget {
   }
 }
 
-/// Shown only when the app is NOT exempt from battery optimization — the
-/// single biggest cause of tracking being killed mid-trip. UI/UX Brief §3.7.
-class _BatteryWarningChip extends StatefulWidget {
-  const _BatteryWarningChip();
+/// Reliability Engine indicator. Hidden when green (good GPS fix +
+/// battery-exempt) to keep the UI quiet; surfaces as a tap-to-fix pill for
+/// battery optimization (the top kill risk), or an informational pill while
+/// GPS is still settling / degraded.
+class _ReliabilityChip extends ConsumerWidget {
+  const _ReliabilityChip();
 
   @override
-  State<_BatteryWarningChip> createState() => _BatteryWarningChipState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(trackingProvider);
+    final level = state.reliabilityLevel;
+    if (level == ReliabilityLevel.green) return const SizedBox.shrink();
 
-class _BatteryWarningChipState extends State<_BatteryWarningChip> {
-  bool _exempt = true;
+    final noNotifPermission = state.notificationGranted == false;
+    final canFixBattery = state.batteryExempt == false;
+    final selfTestFailed = state.selfTestPassed == false;
+    final color = level == ReliabilityLevel.red ? AppColors.danger : AppColors.warning;
+    final icon = noNotifPermission
+        ? Icons.notifications_off_rounded
+        : canFixBattery
+            ? Icons.battery_alert_rounded
+            : selfTestFailed
+                ? Icons.warning_rounded
+                : Icons.gps_not_fixed_rounded;
+    final label = noNotifPermission
+        ? 'Enable notifications'
+        : canFixBattery
+            ? 'Fix battery setting'
+            : selfTestFailed
+                ? 'Alarm test failed — check volume/vibration'
+                : (level == ReliabilityLevel.yellow ? 'Confirming GPS…' : 'Weak GPS signal');
 
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
-  Future<void> _check() async {
-    final exempt = await BatteryOptimization.isExempt();
-    if (mounted) setState(() => _exempt = exempt);
-  }
-
-  Future<void> _fix() async {
-    await BatteryOptimization.requestExemption();
-    _check();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_exempt) return const SizedBox.shrink();
     return GestureDetector(
-      onTap: _fix,
+      onTap: canFixBattery ? () => _fixBattery(ref) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
         decoration: BoxDecoration(
-          color: AppColors.warning,
+          color: color,
           borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.battery_alert_rounded, color: Colors.white, size: 16),
-            SizedBox(width: 6),
-            Text('Fix battery setting',
-                style: TextStyle(
+          children: [
+            Icon(icon, color: Colors.white, size: 16),
+            const SizedBox(width: 6),
+            Text(label,
+                style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
                     fontSize: 12)),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _fixBattery(WidgetRef ref) async {
+    await BatteryOptimization.requestExemption();
+    await ref.read(trackingProvider.notifier).refreshBatteryStatus();
+  }
+}
+
+/// Journey Guardian — single plain-language line summarizing everything the
+/// rider needs to know right now, derived from Reliability Engine + missed-
+/// stop state (steps 1–2). No new state of its own.
+class _GuardianStatusLine extends ConsumerWidget {
+  const _GuardianStatusLine();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(trackingProvider);
+    final trip = state.trip;
+
+    String text;
+    if (state.missedStop) {
+      text = "May have missed your stop — check the alarm screen";
+    } else if (state.batteryExempt == false) {
+      text = 'Backup protection active — battery setting may limit alerts';
+    } else if (state.reliabilityLevel == ReliabilityLevel.red) {
+      text = 'Weak signal — using your last known position';
+    } else if (state.reliabilityLevel == ReliabilityLevel.yellow) {
+      text = 'Confirming your position…';
+    } else if (trip != null &&
+        state.remainingKm != null &&
+        state.remainingKm! <= trip.alarmDistanceKm * 2) {
+      text = 'Approaching — watching closely';
+    } else {
+      text = 'Tracking normally, all clear';
+    }
+
+    return Text(
+      text,
+      textAlign: TextAlign.right,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        shadows: [Shadow(color: Colors.black45, blurRadius: 4)],
       ),
     );
   }

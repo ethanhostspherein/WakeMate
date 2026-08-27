@@ -167,6 +167,29 @@ class AlarmService {
 
   bool get isRinging => _ringing;
 
+  /// Self-test probe (Reliability Engine): confirms the device can vibrate
+  /// without ever touching the ALARM audio stream, so it can't collide with
+  /// [fire]'s volume/ringing state. Guarded by [isRinging] at the call site.
+  Future<bool> selfTest() async {
+    try {
+      return await Vibration.hasVibrator();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Missed-stop escalation: a sharper vibration burst layered onto an
+  /// already-ringing alarm. No-ops if the alarm isn't currently ringing.
+  Future<void> escalate() async {
+    if (!_ringing) return;
+    try {
+      if (await Vibration.hasVibrator()) {
+        Vibration.vibrate(
+            pattern: [0, 1000, 200, 1000, 200, 1000, 200, 1000], repeat: 1);
+      }
+    } catch (_) {}
+  }
+
   Future<int?> _forceMaxAlarmVolume() async {
     try {
       return await _channel.invokeMethod<int>('forceMaxAlarmVolume');

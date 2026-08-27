@@ -6,12 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/active_trip.dart';
 import '../../routing/app_router.dart';
 import '../../services/share_intake_handler.dart';
+import '../../services/supabase_auth_service.dart';
 import '../../state/tracking_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/wakemate_logo.dart';
 
 /// Splash — logo with a subtle scale-in, ~1.5s, then routes to Onboarding
-/// (first launch), a resumed trip, or Home. UI/UX Brief §3.1.
+/// (first launch), Login (unauthenticated), a resumed trip, or Home.
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -41,6 +42,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   Future<void> _bootstrap() async {
+    // Initialize Supabase Auth service
+    await SupabaseAuthService.instance.init();
+
     // Hold the splash ~1.5s total (UI/UX Brief §3.1).
     final prefs = await SharedPreferences.getInstance();
     // Resume any trip the OS interrupted mid-journey (P2-08).
@@ -58,18 +62,25 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       return;
     }
 
-    // If the app was launched by sharing a ticket, jump to the Confirm screen
-    // (with Home beneath so back returns somewhere sensible).
+    final seenOnboarding = prefs.getBool('seen_onboarding') ?? false;
+    final isAuthenticated = SupabaseAuthService.instance.isAuthenticated;
+
+    // If the app was launched by sharing a ticket
     final sharedTicket = await ShareIntakeHandler.instance.takeInitial();
     if (!mounted) return;
-    final seenOnboarding = prefs.getBool('seen_onboarding') ?? false;
     if (sharedTicket != null && seenOnboarding) {
       context.go(Routes.home);
       appRouter.push(Routes.sharedTrip, extra: sharedTicket);
       return;
     }
 
-    context.go(seenOnboarding ? Routes.home : Routes.onboarding);
+    if (!seenOnboarding) {
+      context.go(Routes.onboarding);
+    } else if (!isAuthenticated) {
+      context.go(Routes.login);
+    } else {
+      context.go(Routes.home);
+    }
   }
 
   @override
