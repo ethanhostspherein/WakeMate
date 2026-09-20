@@ -23,5 +23,5 @@ jobs:
             exit 1
           fi
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://kygecvehnrggvfpplysn.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5Z2VjdmVobnJnZ3ZmcHBseXNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyNTQ0NjQsImV4cCI6MjEwMTgzMDQ2NH0.AlXnAB6mLzubQIup-0pb8v_LjpZttKsPstXXfx_ecXA' }}

@@ -18,6 +18,13 @@ class LocationService {
     if (perm == LocationPermission.denied) {
       perm = await Geolocator.requestPermission();
     }
+    // Attempt requesting background location ("Allow all the time") on Android
+    // if only whileInUse was granted, so background updates don't get throttled.
+    if (perm == LocationPermission.whileInUse) {
+      try {
+        perm = await Geolocator.requestPermission();
+      } catch (_) {}
+    }
     return perm == LocationPermission.always ||
         perm == LocationPermission.whileInUse;
   }

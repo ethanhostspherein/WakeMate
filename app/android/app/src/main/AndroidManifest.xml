@@ -75,6 +75,17 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/home_screen_widget_info" />
         </receiver>
+
+        <!-- Persistent background location tracking service configuration (Android 14+ API 34 compliance) -->
+        <service
+            android:name="com.baseflow.geolocator.service.LocationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <meta-data
+            android:name="com.baseflow.geolocator.stopWithTask"
+            android:value="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

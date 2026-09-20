@@ -88,6 +88,7 @@ class AlarmService {
     await init();
 
     await WakelockPlus.enable();
+    await _turnScreenOn();
 
     if (maxVolumeOverride) {
       _savedAlarmVolume = await _forceMaxAlarmVolume();
@@ -203,6 +204,12 @@ class AlarmService {
   Future<void> _restoreAlarmVolume(int previous) async {
     try {
       await _channel.invokeMethod('restoreAlarmVolume', {'volume': previous});
+    } catch (_) {}
+  }
+
+  Future<void> _turnScreenOn() async {
+    try {
+      await _channel.invokeMethod('turnScreenOn');
     } catch (_) {}
   }
 }

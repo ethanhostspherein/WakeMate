@@ -60,5 +60,14 @@ class FamilyContactsService {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = current.map((c) => c.toJson()).toList();
     await prefs.setString(_key, jsonEncode(jsonList));
+
+    try {
+      final client = SupabaseAuthService.instance.client;
+      if (client != null) {
+        await client.from('contacts').delete().eq('id', id);
+      }
+    } catch (e) {
+      debugPrint('FamilyContactsService.deleteContact: Supabase sync failed: $e');
+    }
   }
 }

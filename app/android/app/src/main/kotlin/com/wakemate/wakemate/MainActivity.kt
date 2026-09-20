@@ -19,6 +19,11 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val channelName = "wakemate/alarm"
 
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        showWhenLocked()
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
@@ -40,6 +45,10 @@ class MainActivity : FlutterActivity() {
                                 AudioManager.STREAM_ALARM, volume, 0
                             )
                         }
+                        result.success(null)
+                    }
+                    "turnScreenOn" -> {
+                        showWhenLocked()
                         result.success(null)
                     }
                     else -> result.notImplemented()
