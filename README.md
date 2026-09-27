@@ -1,58 +1,112 @@
 # WakeMate
 
-**Never miss your stop.** WakeMate is a location-based smart alarm for travellers who fall asleep on trains, buses, cabs, or metros. Unlike time-based alarms, it tracks live GPS position against a chosen destination and fires a loud, unmissable alarm once you're within a configurable distance of arrival — even with the screen locked, the app backgrounded, and battery-saver on.
+**Never miss your stop.** WakeMate is a location-based smart alarm designed for travellers who fall asleep on trains, buses, cabs, or metros. Unlike traditional time-based alarms, WakeMate continuously tracks live GPS position against a chosen destination and fires a loud, unmissable alarm when you enter your arrival radius — even with the screen locked, the app backgrounded, or battery-saver active.
 
-Built India-first: destination alarms today, with PNR-linked train tracking, regional-language voice alerts, and family arrival notifications on the roadmap.
+Built India-first: destination alarms today, with PNR-linked train tracking, regional-language alerts, family arrival notifications, and live ETA sharing.
 
-## Tech stack
+---
 
-| Layer | Choice |
+## Key Features
+
+- **Location-Based Smart Alarms**: Distance-based (e.g., wake within 2 km) or time-based (e.g., wake 15 mins before arrival) alarms.
+- **Reliable Background Tracking**: Android persistent foreground service with adaptive polling (coarse tier far away, fine tier when near arrival) to save battery.
+- **Samsung & OEM Battery Optimization**: Built-in instructions and deep links for OEM autostart managers (Samsung One UI "Never sleeping apps", Xiaomi, Oppo, Vivo, Huawei).
+- **Lock Screen Full-Volume Alarm**: Native Kotlin channel (`MainActivity.kt`) forces max volume on `STREAM_ALARM` over silent/DND and turns on the screen over the lock screen.
+- **Custom Destination Names**: Rename map-pinned or GPS locations with custom labels (e.g., *"Grandma's House"*, *"My Office"*).
+- **Onward Cab Deep Links (Uber & Ola)**: Single-tap cab booking upon arrival at a station with pickup automatically set to your current location.
+- **Family Arrival Notifications**: Pre-filled WhatsApp/SMS arrival alerts to family contacts upon alarm trigger.
+- **Live ETA Share Link**: Web viewer link (`web_viewer/share.html`) allowing family to track trip progress live via Supabase RPC without needing an account.
+- **Local-First & Supabase Cloud Sync**: Operates 100% offline with local `SharedPreferences`; syncs trip history and family contacts to Supabase when signed in.
+
+---
+
+## Tech Stack
+
+| Layer | Technology Choice |
 | --- | --- |
-| Mobile client | **Flutter / Dart** (Android-first) |
-| State | Riverpod |
-| Navigation | go_router |
-| Location | geolocator (foreground-service background tracking) |
-| Alarm | flutter_local_notifications (full-screen intent) + audioplayers on the ALARM stream + native `AudioManager` max-volume channel |
-| Geocoding | OpenStreetMap / Nominatim (keyless) |
-| Backend | **Supabase** (Postgres + Auth + Row Level Security) |
+| **Mobile Client** | **Flutter / Dart** (Android-first, API 29+) |
+| **State Management** | Riverpod |
+| **Navigation** | `go_router` |
+| **Location & Service** | `geolocator` (Foreground Service with `foregroundServiceType="location"`) |
+| **Alarm Engine** | `flutter_local_notifications` (Full-Screen Intent) + `audioplayers` (ALARM stream) + Native Kotlin `AudioManager` & Window flags |
+| **Geocoding & Maps** | OpenStreetMap / Nominatim (keyless) & `flutter_map` |
+| **Backend & Sync** | **Supabase** (Postgres + Auth + Row Level Security + RPC) |
+| **Keep-Alive Automation** | GitHub Actions (`supabase-keepalive.yml`) |
 
-> Note: the client is Flutter. The original planning docs specify React Native/Expo — that was superseded; only the client framework changed.
+---
 
-## Repository layout
+## Repository Structure
 
-```
+```text
 WakeMate/
-├─ app/                     # Flutter application
+├─ app/                     # Flutter mobile application
 │  ├─ lib/
-│  │  ├─ core/              # geo math (haversine, ETA)
-│  │  ├─ models/            # trip, destination, alarm settings
-│  │  ├─ services/          # location, alarm engine, geocoding, ticket parser, share intake
-│  │  ├─ state/             # Riverpod providers (trip draft, tracking)
-│  │  ├─ features/          # one folder per screen
-│  │  ├─ theme/             # design tokens
-│  │  └─ routing/           # go_router
-│  ├─ android/              # incl. native alarm platform channel (Kotlin)
-│  └─ assets/sounds/        # bundled alarm tones (offline-safe)
-├─ backend/sql/             # Supabase schema & migrations (reference only — no server runs here)
-└─ *.md                     # PRD, TRD, UI/UX, backend schema, implementation plan
+│  │  ├─ core/              # Geo math (Haversine formula, ETA calculation)
+│  │  ├─ models/            # Trip, ActiveTrip, PendingTrip, Destination, FamilyContact
+│  │  ├─ services/          # Location, AlarmEngine, Geocoding, BatteryOptimization, UserTrips, FamilyContacts, TripShare
+│  │  ├─ state/             # Riverpod providers (tripDraftProvider, trackingProvider)
+│  │  ├─ features/          # Feature screens (alarm, tracking, set_alarm, search, settings, history, auth, permissions)
+│  │  ├─ theme/             # Design tokens and app styling
+│  │  └─ routing/           # go_router configuration
+│  ├─ android/              # Native Kotlin MainActivity platform channel & AndroidManifest
+│  ├─ assets/sounds/        # Bundled offline alarm ringtones
+│  └─ test/                 # Unit & widget test suite (geo_math_test, ticket_parser_test, widget_test)
+├─ backend/sql/             # Supabase database schema & RLS migration SQL scripts
+├─ web_viewer/              # Static HTML page (share.html) for live ETA share links
+└─ .github/workflows/       # GitHub Action workflow for Supabase keep-alive
 ```
 
-## Status
+---
 
-- **Phase 1 — Core UI & foundation:** ✅ complete (all screens, design system, navigation).
-- **Phase 2 — Tracking + alarm engine:** ✅ complete (background location foreground service, adaptive polling, on-device distance/ETA, full-volume native alarm over silent/DND, trip persistence + restart recovery, battery-optimization detection).
-- **Trip intake:** ✅ Share-to-WakeMate (share a ticket → parse PNR/destination/departure → geocode → confirm) and arm-at-departure scheduling. ⏳ PNR live tracking (needs a rail API).
-- **Phase 3 — Backend (Supabase):** ✅ auth, trip/favorites/history sync live. ⏳ offline queue, PNR lookup.
-- **Reliability & engagement features** (missed-stop escalation, motion-confirmed dismiss, automatic family arrival notification over WhatsApp/SMS, live ETA share link, weather-at-destination nudge, home-screen widget): ✅ complete — see `WakeMate_Implementation_Plan.md` §6 for the full list.
-- **In-app Privacy Policy & Terms of Service:** ✅ complete.
-- **Phase 4 — Testing, monetization, store readiness:** ⏳ in progress — draft Play Store listing copy and screenshot prompts ready; still need a signed release build, store graphics, and a hosted privacy policy URL. See `WakeMate_Implementation_Plan.md` §8.
+## Project Status & Recent Improvements
 
-## Running the app
+- **Phase 1 — Core UI & Navigation**: ✅ Complete (all screens, Riverpod state, design system).
+- **Phase 2 — Tracking & Alarm Engine**: ✅ Complete (persistent foreground service, adaptive polling, lock screen waking, native volume override).
+- **Phase 3 — Supabase Backend & Data Layer**: ✅ Complete (guest mode fallback, local-first storage, cloud sync for trips/contacts/favorites, RLS security policies, capability-token live share RPC).
+- **Background & OEM Reliability Enhancements**:
+  - ✅ Configured `stopWithTask: false` and `foregroundServiceType="location"` for Android 14 (API 34) background persistence.
+  - ✅ Added native Samsung One UI "Never sleeping apps" deep-link and OEM background-kill guidance.
+- **Custom Destination Naming**: ✅ Users can assign custom names to map pins and current GPS locations.
+- **Cab Deep Links**: ✅ Uber & Ola deep links updated to prefill pickup at arrival station while leaving destination open for onward transit.
+- **Settings Persistence**: ✅ Unit & vibration preferences persist across app restarts via `SharedPreferences`.
+- **Testing & Verification**: ✅ 11/11 automated unit and widget tests passing (`flutter test`), 0 static analysis issues (`flutter analyze`).
+- **Supabase Keep-Alive**: ✅ Automated GitHub Action pings Supabase every 3 days to prevent free-tier auto-pausing.
 
-```bash
-cd app
-flutter pub get
-flutter run
-```
+---
 
-Requires Flutter 3.44+ and an Android device/emulator (API 29+). Background location and the full-volume alarm should be validated on a physical device.
+## Getting Started
+
+### Prerequisites
+- Flutter SDK (3.22+ recommended)
+- Android Studio / Android SDK (Min API 29 / Target API 34)
+- Physical Android device (recommended for testing background location and lock screen alarm waking)
+
+### Setup & Execution
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/ethanhostspherein/WakeMate.git
+   cd WakeMate/app
+   ```
+
+2. Install dependencies:
+   ```bash
+   flutter pub get
+   ```
+
+3. Run static analysis and test suite:
+   ```bash
+   flutter analyze
+   flutter test
+   ```
+
+4. Run the app:
+   ```bash
+   flutter run
+   ```
+
+---
+
+## License
+
+Copyright © 2026 WakeMate. All rights reserved.

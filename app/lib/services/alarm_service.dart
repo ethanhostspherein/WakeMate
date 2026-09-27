@@ -169,14 +169,34 @@ class AlarmService {
   bool get isRinging => _ringing;
 
   /// Self-test probe (Reliability Engine): confirms the device can vibrate
-  /// without ever touching the ALARM audio stream, so it can't collide with
-  /// [fire]'s volume/ringing state. Guarded by [isRinging] at the call site.
+  /// AND that the audio pipeline accepts a source, without ever touching the
+  /// shared [_player]/ALARM stream so it can't collide with [fire]'s
+  /// volume/ringing state. Guarded by [isRinging] at the call site.
   Future<bool> selfTest() async {
+    bool vibrationOk = false;
     try {
-      return await Vibration.hasVibrator();
+      vibrationOk = await Vibration.hasVibrator();
+    } catch (_) {}
+
+    // ponytail: confirms the playback pipeline initializes and accepts a
+    // source at zero volume — not that sound is actually audible through the
+    // speaker. Upgrade to a hardware/output-device check if false negatives
+    // (silent-but-reported-ok) become a real complaint.
+    bool audioOk = false;
+    final probe = AudioPlayer();
+    try {
+      await probe.setVolume(0);
+      await probe.play(AssetSource('sounds/classic_bell.wav'));
+      audioOk = true;
     } catch (_) {
-      return false;
+    } finally {
+      try {
+        await probe.stop();
+      } catch (_) {}
+      await probe.dispose();
     }
+
+    return vibrationOk && audioOk;
   }
 
   /// Missed-stop escalation: a sharper vibration burst layered onto an

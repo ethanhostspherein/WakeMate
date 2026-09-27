@@ -44,7 +44,7 @@ class SupabaseAuthService {
         anonKey: anonKey,
         authOptions: const FlutterAuthClientOptions(
           authFlowType: AuthFlowType.implicit,
-          autoRefreshToken: false,
+          autoRefreshToken: true,
         ),
       );
       _configured = true;

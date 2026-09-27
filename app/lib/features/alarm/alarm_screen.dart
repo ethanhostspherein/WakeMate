@@ -49,10 +49,18 @@ class _AlarmScreenState extends ConsumerState<AlarmScreen>
   }
 
   Future<void> _dismiss() async {
+    final wasSimulated = ref.read(trackingProvider).simulated;
     // Ends the trip → Journey Complete → History (App Flow §2).
     final trip = ref.read(trackingProvider).trip;
     final destName = trip?.destination.placeName ?? 'your stop';
     await ref.read(trackingProvider.notifier).dismiss();
+
+    if (wasSimulated) {
+      // Just testing the alarm — trip is still live, go back to it.
+      if (mounted) context.pop();
+      return;
+    }
+
     if (trip != null && trip.notifyFamily) {
       await _notifyFamily(trip);
     }
@@ -123,18 +131,20 @@ class _AlarmScreenState extends ConsumerState<AlarmScreen>
   }
 
   Future<void> _bookCab(String provider, Destination destination) async {
-    // Uber has no app-only scheme anymore — its universal link opens the
-    // app directly (Android/iOS App Links) if installed, browser if not.
-    // Ola's app scheme isn't officially documented; best-effort with a
-    // Play Store fallback if the app isn't there to catch it.
+    // Uber sets pickup to my_location (Station B) and leaves dropoff empty
+    // so user can type their final destination (Home/Hotel/etc.).
     final Uri primary = provider == 'Uber'
-        ? Uri.parse('https://m.uber.com/ul/?action=setPickup&pickup=my_location'
-            '&dropoff[latitude]=${destination.lat}&dropoff[longitude]=${destination.lng}'
-            '&dropoff[nickname]=${Uri.encodeComponent(destination.placeName)}')
-        : Uri.parse('olacabs://app/launch');
+        ? Uri.parse('https://m.uber.com/ul/?action=setPickup&pickup=my_location')
+        : Uri.parse('olacabs://app/launch?lat=${destination.lat}&lng=${destination.lng}');
     final fallbackPackage = provider == 'Uber' ? 'com.ubercab' : 'com.olacabs.customer';
 
     var launched = await launchUrl(primary, mode: LaunchMode.externalApplication);
+    if (!launched && provider == 'Ola') {
+      launched = await launchUrl(
+        Uri.parse('https://book.olacabs.com/?lat=${destination.lat}&lng=${destination.lng}'),
+        mode: LaunchMode.externalApplication,
+      );
+    }
     if (!launched) {
       launched = await launchUrl(
           Uri.parse('https://play.google.com/store/apps/details?id=$fallbackPackage'),
@@ -148,15 +158,18 @@ class _AlarmScreenState extends ConsumerState<AlarmScreen>
   }
 
   Future<void> _snooze() async {
+    final wasSimulated = ref.read(trackingProvider).simulated;
     // Re-arm at a shorter distance (App Flow §2, TRD §5).
     await ref.read(trackingProvider.notifier).snooze();
     if (!mounted) return;
-    final km = ref.read(trackingProvider).trip?.alarmDistanceKm ?? 1;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text(
-              'Snoozed — re-alerting at ${km.toStringAsFixed(km < 1 ? 1 : 0)} km.')),
-    );
+    if (!wasSimulated) {
+      final km = ref.read(trackingProvider).trip?.alarmDistanceKm ?? 1;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                'Snoozed — re-alerting at ${km.toStringAsFixed(km < 1 ? 1 : 0)} km.')),
+      );
+    }
     context.pop();
   }
 

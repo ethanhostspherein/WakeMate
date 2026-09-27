@@ -154,6 +154,7 @@ class TrackingState {
   final bool? selfTestPassed;
   final double? closestRemainingKm;
   final bool missedStop;
+  final bool simulated;
 
   const TrackingState({
     this.phase = TrackingPhase.idle,
@@ -170,6 +171,7 @@ class TrackingState {
     this.selfTestPassed,
     this.closestRemainingKm,
     this.missedStop = false,
+    this.simulated = false,
   });
 
   const TrackingState.idle() : this();
@@ -208,6 +210,7 @@ class TrackingState {
     bool? selfTestPassed,
     double? closestRemainingKm,
     bool? missedStop,
+    bool? simulated,
   }) {
     return TrackingState(
       phase: phase ?? this.phase,
@@ -224,6 +227,7 @@ class TrackingState {
       selfTestPassed: selfTestPassed ?? this.selfTestPassed,
       closestRemainingKm: closestRemainingKm ?? this.closestRemainingKm,
       missedStop: missedStop ?? this.missedStop,
+      simulated: simulated ?? this.simulated,
     );
   }
 }

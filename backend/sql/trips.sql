@@ -18,6 +18,10 @@ create table if not exists public.trips (
   trigger_type text not null,
   trigger_minutes integer,
   status text not null,
+  notify_family boolean default false,
+  family_contact_name text,
+  family_contact_phone text,
+  family_channel text,
   distance_travelled_km double precision,
   completed_at timestamptz,
   created_at timestamptz not null default now()

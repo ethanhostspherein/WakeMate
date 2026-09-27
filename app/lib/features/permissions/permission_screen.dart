@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../routing/app_router.dart';
+import '../../services/battery_optimization.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
 import '../../widgets/primary_button.dart';
@@ -54,9 +55,22 @@ class _PermissionScreenState extends State<PermissionScreen> {
   final _status = List<_PermStatus>.filled(_steps.length, _PermStatus.pending);
   int _current = 0;
   bool _busy = false;
+  String? _oemInstruction;
 
   bool get _allResolved =>
       _status.every((s) => s != _PermStatus.pending);
+
+  @override
+  void initState() {
+    super.initState();
+    // OEM autostart/background-kill managers (Samsung, Xiaomi, Oppo, Vivo,
+    // Huawei) sit on top of standard Android battery optimization and have
+    // no runtime permission of their own — surface plain instructions here.
+    BatteryOptimization.manufacturer().then((m) {
+      if (!mounted) return;
+      setState(() => _oemInstruction = BatteryOptimization.instructionsFor(m));
+    });
+  }
 
   Future<void> _request(int index) async {
     setState(() => _busy = true);
@@ -132,6 +146,8 @@ class _PermissionScreenState extends State<PermissionScreen> {
               const SizedBox(height: AppSpacing.sm),
               if (_status[1] == _PermStatus.denied)
                 const _BackgroundDeniedBanner(),
+              if (_oemInstruction != null)
+                _OemInstructionBanner(text: _oemInstruction!),
               PrimaryButton(
                 label: _allResolved ? 'Continue' : 'Continue anyway',
                 onPressed: _continue,
@@ -262,6 +278,61 @@ class _StatusText extends StatelessWidget {
             style: TextStyle(
                 color: color, fontWeight: FontWeight.w600, fontSize: 13)),
       ],
+    );
+  }
+}
+
+/// Warns about the manufacturer's own autostart/background-kill manager
+/// (separate from standard Android battery optimization above) and offers a
+/// best-effort deep link straight to it.
+class _OemInstructionBanner extends StatelessWidget {
+  final String text;
+  const _OemInstructionBanner({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.phone_android_rounded,
+                  color: AppColors.warning, size: 20),
+              const SizedBox(width: AppSpacing.xs),
+              Expanded(
+                child: Text(
+                  'Your phone may still stop tracking in the background '
+                  'unless you also allow this:',
+                  style: Theme.of(context)
+                      .textTheme
+                      .labelMedium
+                      ?.copyWith(color: AppColors.warning),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(text,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: AppColors.warning, fontWeight: FontWeight.w600)),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: BatteryOptimization.openOemSettings,
+              style: TextButton.styleFrom(foregroundColor: AppColors.warning),
+              child: const Text('Open settings'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

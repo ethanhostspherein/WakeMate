@@ -284,6 +284,10 @@ class _ReliabilityChip extends ConsumerWidget {
 
   Future<void> _fixBattery(WidgetRef ref) async {
     await BatteryOptimization.requestExemption();
+    // Also surface the OEM's own autostart/background-kill manager (Samsung,
+    // Xiaomi, Oppo, Vivo, Huawei) — a second layer standard Android battery
+    // optimization doesn't cover, with no runtime permission of its own.
+    await BatteryOptimization.openOemSettings();
     await ref.read(trackingProvider.notifier).refreshBatteryStatus();
   }
 }

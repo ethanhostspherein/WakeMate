@@ -6,16 +6,15 @@ import 'package:wakemate/features/splash/splash_screen.dart';
 
 void main() {
   testWidgets('Splash shows the WakeMate wordmark', (tester) async {
-    await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(home: SplashScreen()),
-      ),
-    );
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        const ProviderScope(
+          child: MaterialApp(home: SplashScreen()),
+        ),
+      );
 
-    // First frame — logo + wordmark are present before navigation fires.
-    expect(find.text('WakeMate'), findsOneWidget);
-    expect(find.text('Never miss your stop'), findsOneWidget);
-
-    await tester.pumpWidget(const SizedBox());
+      expect(find.text('WakeMate'), findsOneWidget);
+      expect(find.text('Never miss your stop'), findsOneWidget);
+    });
   });
 }

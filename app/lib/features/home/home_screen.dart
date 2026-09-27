@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
@@ -35,6 +36,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   double? _userLat;
   double? _userLng;
+  final _mapController = MapController();
+  bool _mapCenteredOnUser = false;
   Destination? _pinnedDestination;
   StreamSubscription<Position>? _locationSub;
   StreamSubscription<List<Trip>>? _tripsSub;
@@ -51,6 +54,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _locationSub?.cancel();
     _tripsSub?.cancel();
+    _mapController.dispose();
     super.dispose();
   }
 
@@ -72,6 +76,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _userLat = pos.latitude;
         _userLng = pos.longitude;
       });
+      _centerMapOnUserOnce(pos.latitude, pos.longitude);
     }
 
     _locationSub = location.positionStream(fine: false).listen((p) {
@@ -80,8 +85,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _userLat = p.latitude;
           _userLng = p.longitude;
         });
+        _centerMapOnUserOnce(p.latitude, p.longitude);
       }
     });
+  }
+
+  // MapOptions.initialCenter only applies on the map's first build, which
+  // usually happens before this async location fetch resolves — so the map
+  // needs an explicit move() the first time a fix comes in, or it stays
+  // centered on the destination/fallback point with the user's marker
+  // possibly off-screen. Only once, so it doesn't fight manual panning.
+  void _centerMapOnUserOnce(double lat, double lng) {
+    if (_mapCenteredOnUser) return;
+    _mapCenteredOnUser = true;
+    try {
+      _mapController.move(LatLng(lat, lng), _mapController.camera.zoom);
+    } catch (_) {}
   }
 
   Future<void> _loadUserData() async {
@@ -231,6 +250,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         children: [
                           MapPreview(
                             height: 170,
+                            mapController: _mapController,
                             lat: _pinnedDestination?.lat ?? (_recentTrips.isNotEmpty ? _recentTrips.first.destination.lat : 26.9124),
                             lng: _pinnedDestination?.lng ?? (_recentTrips.isNotEmpty ? _recentTrips.first.destination.lng : 75.7873),
                             userLat: _userLat,

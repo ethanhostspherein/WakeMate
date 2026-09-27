@@ -33,6 +33,7 @@ class SetAlarmScreen extends ConsumerStatefulWidget {
 class _SetAlarmScreenState extends ConsumerState<SetAlarmScreen> {
   bool _customMode = false;
   bool _starting = false;
+  late final TextEditingController _destNameController;
   late final TextEditingController _pnrController;
   late final TextEditingController _familyNameController;
   late final TextEditingController _familyPhoneController;
@@ -50,6 +51,7 @@ class _SetAlarmScreenState extends ConsumerState<SetAlarmScreen> {
     final draft = ref.read(tripDraftProvider);
     final km = draft.alarm.distanceKm;
     _customMode = !AlarmSettings.presets.contains(km);
+    _destNameController = TextEditingController(text: draft.destination?.placeName ?? '');
     _pnrController = TextEditingController(text: draft.pnrNumber ?? '');
     _familyNameController = TextEditingController(text: draft.familyContactName ?? '');
     _familyPhoneController = TextEditingController(text: draft.familyContactPhone ?? '');
@@ -75,6 +77,7 @@ class _SetAlarmScreenState extends ConsumerState<SetAlarmScreen> {
 
   @override
   void dispose() {
+    _destNameController.dispose();
     _pnrController.dispose();
     _familyNameController.dispose();
     _familyPhoneController.dispose();
@@ -125,7 +128,10 @@ class _SetAlarmScreenState extends ConsumerState<SetAlarmScreen> {
   Future<void> _startJourney() async {
     await _audioPlayer?.stop();
     final draft = ref.read(tripDraftProvider);
-    final destination = draft.destination;
+    final customDestName = _destNameController.text.trim();
+    final destination = (customDestName.isNotEmpty && draft.destination != null)
+        ? draft.destination!.copyWith(placeName: customDestName)
+        : draft.destination;
     if (destination == null) return;
 
     setState(() => _starting = true);
@@ -211,7 +217,10 @@ class _SetAlarmScreenState extends ConsumerState<SetAlarmScreen> {
   Future<void> _armAtDeparture() async {
     await _audioPlayer?.stop();
     final draft = ref.read(tripDraftProvider);
-    final destination = draft.destination;
+    final customDestName = _destNameController.text.trim();
+    final destination = (customDestName.isNotEmpty && draft.destination != null)
+        ? draft.destination!.copyWith(placeName: customDestName)
+        : draft.destination;
     final departureAt = draft.departureAt;
     if (destination == null || departureAt == null) return;
 
@@ -219,10 +228,22 @@ class _SetAlarmScreenState extends ConsumerState<SetAlarmScreen> {
           id: id,
           destination: destination,
           alarmDistanceKm: draft.alarm.distanceKm,
+          mode: draft.mode,
+          pnr: draft.pnrNumber,
+          triggerType: draft.alarm.triggerType,
+          triggerMinutes: draft.alarm.triggerMinutes,
           soundId: draft.alarm.soundId,
           volume: draft.alarm.volume,
           maxVolumeOverride: draft.alarm.maxVolumeOverride,
           vibrate: draft.alarm.vibrate,
+          notifyFamily: draft.notifyFamily,
+          familyContactName: _familyNameController.text.trim().isNotEmpty
+              ? _familyNameController.text.trim()
+              : draft.familyContactName,
+          familyContactPhone: _familyPhoneController.text.trim().isNotEmpty
+              ? _familyPhoneController.text.trim()
+              : draft.familyContactPhone,
+          familyChannel: draft.familyChannel,
           departureAt: departureAt,
         ));
     if (!mounted) return;
@@ -273,6 +294,26 @@ class _SetAlarmScreenState extends ConsumerState<SetAlarmScreen> {
                     lng: draft.destination?.lng ?? 75.7873,
                     showRoute: true,
                     destinationLabel: draft.destination?.placeName,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  TextField(
+                    controller: _destNameController,
+                    onChanged: (val) {
+                      final dest = ref.read(tripDraftProvider).destination;
+                      if (dest != null && val.trim().isNotEmpty) {
+                        ref.read(tripDraftProvider.notifier).setDestination(dest.copyWith(placeName: val.trim()));
+                      }
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Destination Name (Optional)',
+                      hintText: 'e.g. Home, Grandma\'s House, Office',
+                      prefixIcon: const Icon(Icons.edit_location_alt_rounded, color: AppColors.accent),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                      ),
+                      filled: true,
+                      fillColor: AppColors.surface,
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.md),
                   // Travel Mode Selection Tabs (Bus vs Train)

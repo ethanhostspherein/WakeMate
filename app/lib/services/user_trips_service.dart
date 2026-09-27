@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/destination.dart';
 import '../models/favorite.dart';
 import '../models/trip.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_auth_service.dart';
 
 /// Persistence service for User Created Recent Trips and Favorites.
@@ -44,9 +45,21 @@ class UserTripsService {
             .eq('user_id', userId)
             .order('created_at', ascending: false)
             .limit(20);
-        if (data.isNotEmpty) {
-          final dbTrips = data.map((item) => _tripFromDbJson(item)).toList();
-          trips = dbTrips;
+
+        final List<Trip> dbTrips = data.map((item) => _tripFromDbJson(item)).toList();
+        final dbIds = dbTrips.map((t) => t.id).toSet();
+
+        // Merge any local trips not yet in DB (e.g. created while offline/guest)
+        for (final localTrip in trips) {
+          if (!dbIds.contains(localTrip.id)) {
+            dbTrips.add(localTrip);
+            unawaited(_syncSingleTripToDb(client, userId, localTrip));
+          }
+        }
+
+        if (dbTrips.isNotEmpty) {
+          dbTrips.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          trips = dbTrips.take(20).toList();
           await _saveToPrefs(trips);
         }
       }
@@ -56,6 +69,34 @@ class UserTripsService {
 
     _recentTripsController.add(trips);
     return trips;
+  }
+
+  Future<void> _syncSingleTripToDb(SupabaseClient client, String userId, Trip trip) async {
+    try {
+      await client.from('trips').upsert({
+        'id': trip.id,
+        'user_id': userId,
+        'destination_name': trip.destination.placeName,
+        'destination_lat': trip.destination.lat,
+        'destination_lng': trip.destination.lng,
+        'alarm_distance_km': trip.alarmDistanceKm,
+        'sound_id': trip.soundId,
+        'mode': trip.mode.name,
+        'pnr': trip.pnr,
+        'trigger_type': trip.triggerType.name,
+        'trigger_minutes': trip.triggerMinutes,
+        'status': trip.status.name,
+        'notify_family': trip.notifyFamily,
+        'family_contact_name': trip.familyContactName,
+        'family_contact_phone': trip.familyContactPhone,
+        'family_channel': trip.familyChannel,
+        'distance_travelled_km': trip.distanceTravelledKm,
+        'completed_at': trip.completedAt?.toIso8601String(),
+        'created_at': trip.createdAt.toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('UserTripsService._syncSingleTripToDb failed: $e');
+    }
   }
 
   /// Add a newly started trip to recent trips.
@@ -89,6 +130,10 @@ class UserTripsService {
           'trigger_type': trip.triggerType.name,
           'trigger_minutes': trip.triggerMinutes,
           'status': trip.status.name,
+          'notify_family': trip.notifyFamily,
+          'family_contact_name': trip.familyContactName,
+          'family_contact_phone': trip.familyContactPhone,
+          'family_channel': trip.familyChannel,
           'created_at': trip.createdAt.toIso8601String(),
         });
       }
@@ -239,6 +284,10 @@ class UserTripsService {
       'triggerMinutes': t.triggerMinutes,
       'soundId': t.soundId,
       'status': t.status.name,
+      'notifyFamily': t.notifyFamily,
+      'familyContactName': t.familyContactName,
+      'familyContactPhone': t.familyContactPhone,
+      'familyChannel': t.familyChannel,
       'distanceTravelledKm': t.distanceTravelledKm,
       'createdAt': t.createdAt.toIso8601String(),
       'completedAt': t.completedAt?.toIso8601String(),
@@ -269,6 +318,10 @@ class UserTripsService {
         (e) => e.name == json['status'],
         orElse: () => TripStatus.active,
       ),
+      notifyFamily: json['notifyFamily'] as bool? ?? false,
+      familyContactName: json['familyContactName'] as String?,
+      familyContactPhone: json['familyContactPhone'] as String?,
+      familyChannel: json['familyChannel'] as String?,
       distanceTravelledKm: (json['distanceTravelledKm'] as num?)?.toDouble(),
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
       completedAt: DateTime.tryParse(json['completedAt'] as String? ?? ''),
@@ -299,6 +352,10 @@ class UserTripsService {
         (e) => e.name == json['status'],
         orElse: () => TripStatus.active,
       ),
+      notifyFamily: json['notify_family'] as bool? ?? false,
+      familyContactName: json['family_contact_name'] as String?,
+      familyContactPhone: json['family_contact_phone'] as String?,
+      familyChannel: json['family_channel'] as String?,
       distanceTravelledKm: (json['distance_travelled_km'] as num?)?.toDouble(),
       createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now(),
       completedAt: DateTime.tryParse(json['completed_at'] as String? ?? ''),

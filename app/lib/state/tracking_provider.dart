@@ -224,17 +224,24 @@ class TrackingController extends Notifier<TrackingState> {
     }
   }
 
-  Future<void> _triggerAlarm() async {
+  Future<void> _triggerAlarm({bool simulated = false}) async {
     final trip = state.trip;
-    if (trip == null || trip.alarmFired) return;
+    if (trip == null || (!simulated && trip.alarmFired)) return;
 
-    final fired = trip.copyWith(alarmFired: true);
-    await _persistence.save(fired);
-    state = state.copyWith(
-      phase: TrackingPhase.alarm,
-      trip: fired,
-      closestRemainingKm: state.remainingKm,
-    );
+    // A simulated/test alarm must not mark the real trip as fired — that
+    // would (a) permanently block the real distance-based alarm from ever
+    // firing again, and (b) get recorded as a real arrival on dismiss.
+    if (simulated) {
+      state = state.copyWith(phase: TrackingPhase.alarm, simulated: true);
+    } else {
+      final fired = trip.copyWith(alarmFired: true);
+      await _persistence.save(fired);
+      state = state.copyWith(
+        phase: TrackingPhase.alarm,
+        trip: fired,
+        closestRemainingKm: state.remainingKm,
+      );
+    }
 
     // Keep a coarse subscription alive (instead of cancelling outright) so
     // missed-stop detection can see the vehicle continuing past the
@@ -256,6 +263,12 @@ class TrackingController extends Notifier<TrackingState> {
     if (trip == null) return;
     await _alarm.stop();
 
+    if (state.simulated) {
+      state = state.copyWith(phase: TrackingPhase.tracking, simulated: false);
+      _subscribe(fine: _shouldBeFine());
+      return;
+    }
+
     final shorter = trip.alarmDistanceKm > 1 ? 1.0 : trip.alarmDistanceKm / 2;
     final rearmed =
         trip.copyWith(alarmDistanceKm: shorter, alarmFired: false);
@@ -271,6 +284,15 @@ class TrackingController extends Notifier<TrackingState> {
 
   /// Dismiss: end the trip successfully.
   Future<void> dismiss() async {
+    if (state.simulated) {
+      // Just a sound/vibration/lock-screen test — resume the real trip
+      // instead of ending it; nothing was actually completed.
+      await _alarm.stop();
+      state = state.copyWith(phase: TrackingPhase.tracking, simulated: false);
+      _subscribe(fine: _shouldBeFine());
+      return;
+    }
+
     final trip = state.trip;
     _selfTestTimer?.cancel();
     await _alarm.stop();
@@ -317,8 +339,9 @@ class TrackingController extends Notifier<TrackingState> {
     state = const TrackingState.idle();
   }
 
-  /// Debug helper (Phase 1/2): force the alarm without waiting to arrive.
-  Future<void> debugTriggerAlarm() => _triggerAlarm();
+  /// Debug helper (Phase 1/2): force the alarm without waiting to arrive,
+  /// without touching the real trip's fired/completed state.
+  Future<void> debugTriggerAlarm() => _triggerAlarm(simulated: true);
 }
 
 final trackingProvider =

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../models/alarm_settings.dart';
 import '../../routing/app_router.dart';
 import '../../services/supabase_auth_service.dart';
@@ -23,6 +25,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _vibrate = true;
   String _sound = AlarmSettings.defaults.soundId;
   final _auth = SupabaseAuthService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _metric = prefs.getBool('pref_metric') ?? true;
+      _vibrate = prefs.getBool('pref_vibrate') ?? true;
+      _sound = prefs.getString('pref_sound') ?? AlarmSettings.defaults.soundId;
+    });
+  }
+
+  Future<void> _saveBool(String key, bool val) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, val);
+  }
+
+  Future<void> _saveString(String key, String val) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, val);
+  }
 
   Future<void> _handleSignOut() async {
     await _auth.signOut();
@@ -65,14 +93,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.vibration_rounded,
             title: 'Vibrate with alarm',
             value: _vibrate,
-            onChanged: (v) => setState(() => _vibrate = v),
+            onChanged: (v) {
+              setState(() => _vibrate = v);
+              _saveBool('pref_vibrate', v);
+            },
           ),
           _SwitchTile(
             icon: Icons.straighten_rounded,
             title: 'Use kilometres',
             subtitle: _metric ? 'km' : 'miles',
             value: _metric,
-            onChanged: (v) => setState(() => _metric = v),
+            onChanged: (v) {
+              setState(() => _metric = v);
+              _saveBool('pref_metric', v);
+            },
           ),
           const SizedBox(height: AppSpacing.lg),
           _SectionLabel('Permissions'),
@@ -166,7 +200,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
-    if (choice != null) setState(() => _sound = choice);
+    if (choice != null) {
+      setState(() => _sound = choice);
+      _saveString('pref_sound', choice);
+    }
   }
 }
 
