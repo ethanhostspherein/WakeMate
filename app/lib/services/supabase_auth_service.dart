@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Centralized authentication service backed by Supabase Auth.
@@ -13,24 +12,16 @@ class SupabaseAuthService {
   /// Returns true if Supabase was initialized with valid credentials.
   bool get isConfigured => _configured;
 
-  /// Initialize Supabase Flutter SDK using credentials from `.env` or defaults.
+  /// Initialize Supabase Flutter SDK using credentials from environment variables.
   Future<void> init() async {
     if (_initialized) return;
 
-    String url = '';
-    String anonKey = '';
-
-    try {
-      await dotenv.load(fileName: '.env');
-      url = dotenv.env['SUPABASE_URL'] ?? '';
-      anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
-    } catch (_) {
-      // Dotenv file might not exist or failed to load
-    }
+    final String url = const String.fromEnvironment('SUPABASE_URL');
+    final String anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
 
     if (url.isEmpty || anonKey.isEmpty || url.contains('your-supabase-project-id')) {
       if (kDebugMode) {
-        print('⚠️ Supabase credentials not configured in app/.env');
+        print('⚠️ Supabase credentials not configured via --dart-define');
       }
       _initialized = true;
       _configured = false;
@@ -73,7 +64,7 @@ class SupabaseAuthService {
   Future<void> sendOtp(String email) async {
     if (!_configured || client == null) {
       throw Exception(
-        'Supabase is not configured. Please paste your SUPABASE_URL and SUPABASE_ANON_KEY in app/.env',
+        'Supabase is not configured. Please pass SUPABASE_URL and SUPABASE_ANON_KEY via --dart-define',
       );
     }
 
@@ -87,7 +78,7 @@ class SupabaseAuthService {
   Future<void> sendMagicLink(String email) async {
     if (!_configured || client == null) {
       throw Exception(
-        'Supabase is not configured. Please paste your SUPABASE_URL and SUPABASE_ANON_KEY in app/.env',
+        'Supabase is not configured. Please pass SUPABASE_URL and SUPABASE_ANON_KEY via --dart-define',
       );
     }
 
@@ -105,7 +96,7 @@ class SupabaseAuthService {
   }) async {
     if (!_configured || client == null) {
       throw Exception(
-        'Supabase is not configured. Please paste your SUPABASE_URL and SUPABASE_ANON_KEY in app/.env',
+        'Supabase is not configured. Please pass SUPABASE_URL and SUPABASE_ANON_KEY via --dart-define',
       );
     }
 

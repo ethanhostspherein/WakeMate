@@ -82,6 +82,12 @@ class TrackingController extends Notifier<TrackingState> {
     unawaited(refreshBatteryStatus());
     unawaited(refreshNotificationStatus());
     _scheduleSelfTest();
+    unawaited(_alarm.syncNativeGeofence(
+      tripId: trip.id,
+      lat: trip.destination.lat,
+      lng: trip.destination.lng,
+      radiusKm: trip.alarmDistanceKm,
+    ));
     unawaited(HomeWidgetService.instance
         .showActiveTrip(trip.destination.placeName, trip.alarmDistanceKm));
   }
@@ -131,6 +137,12 @@ class TrackingController extends Notifier<TrackingState> {
     unawaited(refreshBatteryStatus());
     unawaited(refreshNotificationStatus());
     _scheduleSelfTest();
+    unawaited(_alarm.syncNativeGeofence(
+      tripId: trip.id,
+      lat: trip.destination.lat,
+      lng: trip.destination.lng,
+      radiusKm: trip.alarmDistanceKm,
+    ));
   }
 
   /// Re-check battery-optimization exemption (Reliability Engine signal).
@@ -274,7 +286,10 @@ class TrackingController extends Notifier<TrackingState> {
       return;
     }
 
-    final shorter = trip.alarmDistanceKm > 1 ? 1.0 : trip.alarmDistanceKm / 2;
+    // Re-arm strictly inside the current position so snooze cannot re-fire on
+    // the very next GPS fix when the rider is already within 1 km.
+    final remaining = state.remainingKm ?? trip.alarmDistanceKm;
+    final shorter = (remaining * 0.5).clamp(0.2, 1.0).toDouble();
     final rearmed =
         trip.copyWith(alarmDistanceKm: shorter, alarmFired: false);
     await _persistence.save(rearmed);
@@ -285,6 +300,12 @@ class TrackingController extends Notifier<TrackingState> {
       closestRemainingKm: state.remainingKm,
     );
     _subscribe(fine: true);
+    unawaited(_alarm.syncNativeGeofence(
+      tripId: rearmed.id,
+      lat: rearmed.destination.lat,
+      lng: rearmed.destination.lng,
+      radiusKm: rearmed.alarmDistanceKm,
+    ));
   }
 
   /// Dismiss: end the trip successfully.
@@ -305,6 +326,7 @@ class TrackingController extends Notifier<TrackingState> {
     _sub = null;
     await stopShare();
     await _persistence.clear();
+    unawaited(_alarm.cancelNativeGeofence());
     if (trip != null) {
       // ponytail: straight-line start→destination distance, not actual GPS
       // path length (no route history is recorded). Good enough for the
@@ -334,6 +356,7 @@ class TrackingController extends Notifier<TrackingState> {
     _sub = null;
     await stopShare();
     await _persistence.clear();
+    unawaited(_alarm.cancelNativeGeofence());
     if (trip != null) {
       await UserTripsService.instance.updateTripStatus(
         trip.id,

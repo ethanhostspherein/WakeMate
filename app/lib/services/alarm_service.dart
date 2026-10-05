@@ -292,5 +292,29 @@ class AlarmService {
       await _channel.invokeMethod('turnScreenOn');
     } catch (_) {}
   }
+
+  /// Sync active trip details with native GeofencingClient and AlarmManager watchdog.
+  Future<void> syncNativeGeofence({
+    required String tripId,
+    required double lat,
+    required double lng,
+    required double radiusKm,
+  }) async {
+    try {
+      await _channel.invokeMethod('syncActiveTripGeofence', {
+        'tripId': tripId,
+        'lat': lat,
+        'lng': lng,
+        'radiusKm': radiusKm,
+      });
+    } catch (_) {}
+  }
+
+  /// Cancel native hardware geofences and AlarmManager watchdog.
+  Future<void> cancelNativeGeofence() async {
+    try {
+      await _channel.invokeMethod('cancelActiveTripGeofence');
+    } catch (_) {}
+  }
 }
 

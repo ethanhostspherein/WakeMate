@@ -38,12 +38,8 @@ class MainActivity : FlutterActivity() {
                 Intent.ACTION_HEADSET_PLUG == action ||
                 BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED == action) {
                 
-                // Audio route changed or earphones unplugged mid-trip/alarm!
-                // Re-enforce hardware speaker output and max volume for safety.
-                routeToSpeaker(true)
-                val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-                audio.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
+                // Dart decides whether to force volume and routing, and only
+                // while the alarm is actually ringing (AlarmService).
 
                 // Dispatch event notification to Dart layer
                 runOnUiThread {
@@ -120,6 +116,20 @@ class MainActivity : FlutterActivity() {
                             "guardActive" to noisyReceiverRegistered
                         )
                     )
+                }
+                "syncActiveTripGeofence" -> {
+                    val tripId = call.argument<String>("tripId") ?: ""
+                    val lat = call.argument<Double>("lat") ?: 0.0
+                    val lng = call.argument<Double>("lng") ?: 0.0
+                    val radiusKm = call.argument<Double>("radiusKm") ?: 1.0
+                    if (tripId.isNotEmpty() && lat != 0.0 && lng != 0.0) {
+                        GeofenceManager.registerGeofence(this, tripId, lat, lng, radiusKm)
+                    }
+                    result.success(true)
+                }
+                "cancelActiveTripGeofence" -> {
+                    GeofenceManager.removeGeofence(this)
+                    result.success(true)
                 }
                 else -> result.notImplemented()
             }
