@@ -148,6 +148,8 @@ class _PermissionScreenState extends State<PermissionScreen> {
                 const _BackgroundDeniedBanner(),
               if (_oemInstruction != null)
                 _OemInstructionBanner(text: _oemInstruction!),
+              const _BackgroundHelpSection(),
+              const SizedBox(height: AppSpacing.sm),
               PrimaryButton(
                 label: _allResolved ? 'Continue' : 'Continue anyway',
                 onPressed: _continue,
@@ -334,6 +336,104 @@ class _OemInstructionBanner extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Always-visible self-help reference: how to allow WakeMate to run in the
+/// background on each major manufacturer, for when auto-detection above
+/// ([_OemInstructionBanner]) can't identify the device or the user wants to
+/// double-check another step. Collapsed by default to stay out of the way.
+class _BackgroundHelpSection extends StatelessWidget {
+  const _BackgroundHelpSection();
+
+  static const _manufacturers = [
+    'samsung',
+    'xiaomi',
+    'oppo',
+    'vivo',
+    'huawei',
+    'oneplus',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: ExpansionTile(
+        leading: const Icon(Icons.phone_android_rounded, color: AppColors.accent),
+        title: const Text('Keep WakeMate running in the background',
+            style: TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: const Text('Steps for your phone brand, in case the alarm gets killed'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final m in _manufacturers)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_label(m),
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelLarge
+                                ?.copyWith(fontWeight: FontWeight.bold)),
+                        Text(BatteryOptimization.instructionsFor(m) ?? '',
+                            style: Theme.of(context).textTheme.bodyMedium),
+                      ],
+                    ),
+                  ),
+                Text('Other phones',
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelLarge
+                        ?.copyWith(fontWeight: FontWeight.bold)),
+                Text(
+                    'Settings → Apps → WakeMate → Battery → set to "Unrestricted" '
+                    'or "No restrictions".',
+                    style: Theme.of(context).textTheme.bodyMedium),
+                const SizedBox(height: AppSpacing.sm),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton(
+                    onPressed: BatteryOptimization.openOemSettings,
+                    child: const Text('Open my phone\'s settings'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _label(String m) {
+    switch (m) {
+      case 'samsung':
+        return 'Samsung';
+      case 'xiaomi':
+        return 'Xiaomi / Redmi / Poco';
+      case 'oppo':
+        return 'Oppo / Realme';
+      case 'vivo':
+        return 'Vivo';
+      case 'huawei':
+        return 'Huawei / Honor';
+      case 'oneplus':
+        return 'OnePlus';
+      default:
+        return m;
+    }
   }
 }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -7,6 +9,10 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 /// The alarm engine. Overrides silent / vibrate / Do-Not-Disturb by playing on
 /// the Android ALARM audio stream at forced-max volume, backed by a full-screen
 /// intent notification that wakes the screen even when locked (TRD §5).
+///
+/// Headphones / Earphone Disconnect Safety Guard: Ensures that when the alarm
+/// fires or when earphones fall out / disconnect mid-trip (ACTION_AUDIO_BECOMING_NOISY),
+/// playback is immediately routed directly through hardware speakers on STREAM_ALARM.
 class AlarmService {
   AlarmService._();
   static final AlarmService instance = AlarmService._();
@@ -14,10 +20,14 @@ class AlarmService {
   static const _channel = MethodChannel('wakemate/alarm');
   final _player = AudioPlayer();
   final _notifications = FlutterLocalNotificationsPlugin();
+  final _audioGuardController = StreamController<bool>.broadcast();
 
   bool _initialized = false;
   bool _ringing = false;
   int? _savedAlarmVolume;
+
+  /// Stream emitting earphone connection status updates when ACTION_AUDIO_BECOMING_NOISY fires.
+  Stream<bool> get onHeadphonesDisconnected => _audioGuardController.stream;
 
   /// Tapping the full-screen alarm notification (wired in main() → Alarm screen).
   static void Function()? onAlarmTap;
@@ -31,6 +41,8 @@ class AlarmService {
 
   Future<void> init() async {
     if (_initialized) return;
+    _channel.setMethodCallHandler(_handleNativeMethodCall);
+
     const androidInit =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     await _notifications.initialize(
@@ -63,6 +75,52 @@ class AlarmService {
     _initialized = true;
   }
 
+  Future<dynamic> _handleNativeMethodCall(MethodCall call) async {
+    if (call.method == 'onAudioBecomingNoisy') {
+      final Map<dynamic, dynamic>? args =
+          call.arguments as Map<dynamic, dynamic>?;
+      final bool headphonesConnected =
+          args?['headphonesConnected'] as bool? ?? false;
+
+      // Earphones unplugged / audio route changed!
+      // Immediately enforce hardware speaker output and max volume.
+      await routeToSpeaker(true);
+      if (_ringing) {
+        await _forceMaxAlarmVolume();
+      }
+      _audioGuardController.add(headphonesConnected);
+    }
+  }
+
+  /// Checks if wired/Bluetooth earphones are currently connected.
+  Future<bool> isHeadphonesConnected() async {
+    try {
+      final connected =
+          await _channel.invokeMethod<bool>('isHeadphonesConnected');
+      return connected ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Forces audio output through device hardware speaker.
+  Future<void> routeToSpeaker(bool enable) async {
+    try {
+      await _channel.invokeMethod('routeToSpeaker', {'enable': enable});
+    } catch (_) {}
+  }
+
+  /// Returns raw audio routing status map from native plugin.
+  Future<Map<String, dynamic>> getAudioRouteStatus() async {
+    try {
+      final map =
+          await _channel.invokeMapMethod<String, dynamic>('getAudioRouteStatus');
+      return map ?? {};
+    } catch (_) {
+      return {};
+    }
+  }
+
   /// Dispatch a notification tap by payload: alarm vs. departure prompt.
   static void _onResponse(NotificationResponse response) {
     final payload = response.payload;
@@ -75,7 +133,7 @@ class AlarmService {
   }
 
   /// Fire the alarm: max volume, loop the sound, vibrate, wake the screen and
-  /// post a full-screen-intent notification.
+  /// post a full-screen-intent notification, with hardware speaker fallback forced.
   Future<void> fire({
     required String soundId,
     required double volume,
@@ -93,6 +151,8 @@ class AlarmService {
     if (maxVolumeOverride) {
       _savedAlarmVolume = await _forceMaxAlarmVolume();
     }
+    // Force audio route directly to hardware speaker (Safety Guard).
+    await routeToSpeaker(true);
 
     // Loop the bundled sound on the ALARM stream (works offline).
     try {
@@ -233,3 +293,4 @@ class AlarmService {
     } catch (_) {}
   }
 }
+

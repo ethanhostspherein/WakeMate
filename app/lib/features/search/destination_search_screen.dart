@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../models/alarm_settings.dart';
 import '../../models/destination.dart';
 import '../../routing/app_router.dart';
 import '../../services/geocoding_service.dart';
@@ -286,7 +287,7 @@ class _DestinationSearchScreenState
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    '${d.distanceFromUserKm!.toStringAsFixed(1)} km away',
+                    '${AlarmSettings.formatDistance(d.distanceFromUserKm!)} away',
                     style: const TextStyle(
                       color: AppColors.accent,
                       fontSize: 11,

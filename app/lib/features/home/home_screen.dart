@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../models/alarm_settings.dart';
 import '../../models/destination.dart';
 import '../../models/favorite.dart';
 import '../../models/trip.dart';
@@ -190,7 +191,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Text('Destination: ${trip.destination.placeName}'),
               const SizedBox(height: 16),
               Text(
-                '${selectedKm.toStringAsFixed(1)} km',
+                AlarmSettings.formatDistance(selectedKm),
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -669,7 +670,7 @@ class _RecentTile extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${_formatDate(trip.createdAt)} • Alarm at ${trip.alarmDistanceKm.toStringAsFixed(1)} km${trip.pnr != null && trip.pnr!.isNotEmpty ? ' • PNR: ${trip.pnr}' : ''}',
+                          '${_formatDate(trip.createdAt)} • Alarm at ${AlarmSettings.formatDistance(trip.alarmDistanceKm)}${trip.pnr != null && trip.pnr!.isNotEmpty ? ' • PNR: ${trip.pnr}' : ''}',
                           style: Theme.of(context).textTheme.labelMedium?.copyWith(
                                 color: AppColors.textSecondary,
                               ),

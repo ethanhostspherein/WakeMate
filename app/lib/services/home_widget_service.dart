@@ -1,5 +1,7 @@
 import 'package:home_widget/home_widget.dart';
 
+import '../models/alarm_settings.dart';
+
 /// Home-screen widget — shows the active or most recent trip and opens the
 /// app on tap. Best-effort like the other services here: widget errors
 /// never crash the app, just leave the widget stale.
@@ -16,8 +18,7 @@ class HomeWidgetService {
   Future<void> showActiveTrip(String destName, double alarmKm) => _push(
         status: 'Tracking',
         destName: destName,
-        detail:
-            'Alarm at ${alarmKm.toStringAsFixed(alarmKm < 1 ? 1 : 0)} km',
+        detail: 'Alarm at ${AlarmSettings.formatDistance(alarmKm)}',
       );
 
   Future<void> showLastTrip(String destName) => _push(

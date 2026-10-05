@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/active_trip.dart';
+import '../../models/alarm_settings.dart';
 import '../../routing/app_router.dart';
+import '../../services/alarm_service.dart';
 import '../../services/battery_optimization.dart';
 import '../../services/trip_share_service.dart';
 import '../../state/tracking_provider.dart';
@@ -72,6 +76,11 @@ class TrackingScreen extends ConsumerWidget {
                   const Align(
                     alignment: Alignment.centerRight,
                     child: _ReliabilityChip(),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  const Align(
+                    alignment: Alignment.centerRight,
+                    child: _HeadphoneGuardChip(),
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   const Align(
@@ -388,7 +397,7 @@ class _StatsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final remaining =
-        remainingKm != null ? remainingKm!.toStringAsFixed(remainingKm! < 10 ? 1 : 0) : '—';
+        remainingKm != null ? AlarmSettings.formatDistance(remainingKm!) : '—';
     final eta = etaMin != null ? '$etaMin min' : '—';
     final speed = speedKmh != null ? '${speedKmh!.round()} km/h' : '—';
 
@@ -430,7 +439,7 @@ class _StatsSheet extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleLarge),
                 ),
-                Text('Alarm at ${alarmKm.toStringAsFixed(alarmKm < 1 ? 1 : 0)} km',
+                Text('Alarm at ${AlarmSettings.formatDistance(alarmKm)}',
                     style: Theme.of(context).textTheme.labelMedium),
               ],
             ),
@@ -438,7 +447,7 @@ class _StatsSheet extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('$remaining km',
+                Text(remaining,
                     style: AppTypography.statNumeral(fontSize: 52)),
                 const SizedBox(width: 8),
                 Padding(
@@ -528,3 +537,72 @@ class _CircleButton extends StatelessWidget {
     );
   }
 }
+
+/// Headphone Disconnect Safety Guard status pill shown on tracking screen.
+class _HeadphoneGuardChip extends StatefulWidget {
+  const _HeadphoneGuardChip();
+
+  @override
+  State<_HeadphoneGuardChip> createState() => _HeadphoneGuardChipState();
+}
+
+class _HeadphoneGuardChipState extends State<_HeadphoneGuardChip> {
+  bool _headphonesConnected = false;
+  StreamSubscription<bool>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkStatus();
+    _sub = AlarmService.instance.onHeadphonesDisconnected.listen((connected) {
+      if (mounted) setState(() => _headphonesConnected = connected);
+    });
+  }
+
+  Future<void> _checkStatus() async {
+    final connected = await AlarmService.instance.isHeadphonesConnected();
+    if (mounted) setState(() => _headphonesConnected = connected);
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _headphonesConnected
+                ? Icons.headset_rounded
+                : Icons.volume_up_rounded,
+            color: Colors.white,
+            size: 14,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            _headphonesConnected
+                ? 'Earphones connected · Speaker fallback active'
+                : 'Hardware Speaker Guard active',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

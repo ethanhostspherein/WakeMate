@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,8 +7,11 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/active_trip.dart';
+import '../../models/alarm_settings.dart';
 import '../../models/destination.dart';
 import '../../routing/app_router.dart';
+import '../../services/alarm_service.dart';
+import '../../services/family_notify_service.dart';
 import '../../state/tracking_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -41,8 +44,24 @@ class _AlarmScreenState extends ConsumerState<AlarmScreen>
       if (status == AnimationStatus.completed) _dismiss();
     });
 
+  StreamSubscription<bool>? _headphoneSub;
+  bool _headphoneDisconnectedAlert = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _headphoneSub = AlarmService.instance.onHeadphonesDisconnected.listen((_) {
+      if (mounted) {
+        setState(() {
+          _headphoneDisconnectedAlert = true;
+        });
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _headphoneSub?.cancel();
     _pulse.dispose();
     _hold.dispose();
     super.dispose();
@@ -167,38 +186,22 @@ class _AlarmScreenState extends ConsumerState<AlarmScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
-                'Snoozed — re-alerting at ${km.toStringAsFixed(km < 1 ? 1 : 0)} km.')),
+                'Snoozed — re-alerting at ${AlarmSettings.formatDistance(km)}.')),
       );
     }
     context.pop();
   }
 
   Future<void> _notifyFamily(ActiveTrip trip) async {
-    final phone = trip.familyContactPhone?.trim();
-    if (phone == null || phone.isEmpty) {
-      if (!mounted) return;
+    final hasContact = (trip.familyContactPhone?.trim().isNotEmpty ?? false);
+    final launched =
+        hasContact && await FamilyNotifyService.instance.notifyMissedStop(trip);
+    if (!mounted) return;
+    if (!hasContact) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No family contact saved for this trip.')),
       );
-      return;
-    }
-
-    final destName = trip.destination.placeName;
-    final digits = phone.replaceAll(RegExp(r'[^\d+]'), '');
-    final message =
-        'WakeMate alert: I may have missed my stop near $destName. Please check on me.';
-
-    // wa.me / sms: deep links only pre-fill the message — the platform
-    // requires a final manual tap inside WhatsApp/Messages to actually send.
-    final uri = trip.familyChannel == 'sms'
-        ? (Platform.isIOS
-            ? Uri.parse('sms:$digits&body=${Uri.encodeComponent(message)}')
-            : Uri(scheme: 'sms', path: digits, queryParameters: {'body': message}))
-        : Uri.parse(
-            'https://wa.me/${digits.replaceAll('+', '')}?text=${Uri.encodeComponent(message)}');
-
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!launched && mounted) {
+    } else if (!launched) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not open messaging app.')),
       );
@@ -253,6 +256,47 @@ class _AlarmScreenState extends ConsumerState<AlarmScreen>
                       color: Colors.white,
                       fontSize: 20,
                       fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+                      border: Border.all(
+                        color: _headphoneDisconnectedAlert
+                            ? Colors.yellowAccent
+                            : Colors.white.withValues(alpha: 0.4),
+                        width: _headphoneDisconnectedAlert ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _headphoneDisconnectedAlert
+                              ? Icons.headset_off_rounded
+                              : Icons.volume_up_rounded,
+                          color: _headphoneDisconnectedAlert
+                              ? Colors.yellowAccent
+                              : Colors.white,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _headphoneDisconnectedAlert
+                              ? 'Earphones disconnected · Speaker Guard Enforced!'
+                              : 'Speaker Guard Active · Hardware speaker forced',
+                          style: TextStyle(
+                            color: _headphoneDisconnectedAlert
+                                ? Colors.yellowAccent
+                                : Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   if (missedStop) ...[

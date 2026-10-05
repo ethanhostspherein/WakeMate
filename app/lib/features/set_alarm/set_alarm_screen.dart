@@ -443,7 +443,7 @@ class _SetAlarmScreenState extends ConsumerState<SetAlarmScreen> {
                     _SleepModeCard(
                       destName: destName,
                       wakeSummary: alarm.triggerType == AlarmTriggerType.distance
-                          ? '${alarm.distanceKm.toStringAsFixed(alarm.distanceKm < 1 ? 1 : 0)} km before arrival'
+                          ? '${AlarmSettings.formatDistance(alarm.distanceKm)} before arrival'
                           : '${alarm.triggerMinutes} min before arrival',
                       weather: _weather,
                     ),
@@ -525,6 +525,23 @@ class _SleepModeCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium),
           Text('Wake me: $wakeSummary',
               style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.headset_mic_rounded,
+                  size: 16, color: AppColors.accent),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  'Earphone Guard Active: Speaker fallback enabled',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ),
+            ],
+          ),
           if (weather != null) ...[
             const SizedBox(height: 4),
             Row(
@@ -821,7 +838,7 @@ class _DistanceChips extends StatelessWidget {
         ...AlarmSettings.presets.map((km) {
           final active = !customMode && selected == km;
           return _Chip(
-            label: '${km.toStringAsFixed(0)} km',
+            label: AlarmSettings.formatDistance(km),
             active: active,
             onTap: () => onPreset(km),
           );
@@ -886,14 +903,14 @@ class _CustomSlider extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('${AlarmSettings.minCustomKm} km',
+              Text(AlarmSettings.formatDistance(AlarmSettings.minCustomKm),
                   style: Theme.of(context).textTheme.labelMedium),
-              Text('${clamped.toStringAsFixed(1)} km',
+              Text(AlarmSettings.formatDistance(clamped),
                   style: Theme.of(context)
                       .textTheme
                       .titleMedium
                       ?.copyWith(color: AppColors.accent)),
-              Text('${AlarmSettings.maxCustomKm.toStringAsFixed(0)} km',
+              Text(AlarmSettings.formatDistance(AlarmSettings.maxCustomKm),
                   style: Theme.of(context).textTheme.labelMedium),
             ],
           ),
@@ -903,7 +920,7 @@ class _CustomSlider extends StatelessWidget {
             max: AlarmSettings.maxCustomKm,
             divisions: 99,
             activeColor: AppColors.accent,
-            label: '${clamped.toStringAsFixed(1)} km',
+            label: AlarmSettings.formatDistance(clamped),
             onChanged: onChanged,
           ),
         ],

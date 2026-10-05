@@ -9,6 +9,7 @@ import '../models/active_trip.dart';
 import '../models/trip.dart';
 import '../services/alarm_service.dart';
 import '../services/battery_optimization.dart';
+import '../services/family_notify_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/location_service.dart';
 import '../services/trip_persistence.dart';
@@ -23,6 +24,7 @@ class TrackingController extends Notifier<TrackingState> {
   final _persistence = TripPersistence();
   final _alarm = AlarmService.instance;
   final _share = TripShareService.instance;
+  final _familyNotify = FamilyNotifyService.instance;
 
   StreamSubscription<Position>? _sub;
   bool _fineTier = false;
@@ -176,6 +178,9 @@ class TrackingController extends Notifier<TrackingState> {
     // Escalate once, right on the false→true transition.
     if (missedStop && !state.missedStop) {
       unawaited(_alarm.escalate());
+      if (trip.notifyFamily) {
+        unawaited(_familyNotify.notifyMissedStop(trip));
+      }
     }
 
     state = state.copyWith(

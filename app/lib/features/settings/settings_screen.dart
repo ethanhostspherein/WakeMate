@@ -1,11 +1,14 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:vibration/vibration.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/alarm_settings.dart';
 import '../../routing/app_router.dart';
+import '../../services/alarm_service.dart';
 import '../../services/supabase_auth_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_spacing.dart';
@@ -23,6 +26,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _metric = true;
   bool _vibrate = true;
+  bool _earphoneGuard = true;
   String _sound = AlarmSettings.defaults.soundId;
   final _auth = SupabaseAuthService.instance;
 
@@ -38,6 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _metric = prefs.getBool('pref_metric') ?? true;
       _vibrate = prefs.getBool('pref_vibrate') ?? true;
+      _earphoneGuard = prefs.getBool('pref_earphone_guard') ?? true;
       _sound = prefs.getString('pref_sound') ?? AlarmSettings.defaults.soundId;
     });
   }
@@ -50,6 +55,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _saveString(String key, String val) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(key, val);
+  }
+
+  Future<void> _testVibrate() async {
+    try {
+      if (await Vibration.hasVibrator()) Vibration.vibrate(duration: 300);
+    } catch (_) {}
   }
 
   Future<void> _handleSignOut() async {
@@ -96,6 +107,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (v) {
               setState(() => _vibrate = v);
               _saveBool('pref_vibrate', v);
+              if (v) _testVibrate();
+            },
+          ),
+          _SwitchTile(
+            icon: Icons.headset_off_rounded,
+            title: 'Earphone Disconnect Safety Guard',
+            subtitle: 'Forces hardware speaker alert if earplugs unplug mid-trip',
+            value: _earphoneGuard,
+            onChanged: (v) {
+              setState(() => _earphoneGuard = v);
+              _saveBool('pref_earphone_guard', v);
+              if (v) {
+                AlarmService.instance.routeToSpeaker(true);
+              }
             },
           ),
           _SwitchTile(
@@ -106,6 +131,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (v) {
               setState(() => _metric = v);
               _saveBool('pref_metric', v);
+              AlarmSettings.useMetric = v;
             },
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -178,28 +204,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _pickSound() async {
+    final player = AudioPlayer();
+    String? playingId;
     final choice = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: AlarmSound.all
-              .map((s) => ListTile(
-                    title: Text(s.label),
-                    trailing: s.id == _sound
-                        ? const Icon(Icons.check_rounded,
-                            color: AppColors.accent)
-                        : null,
-                    onTap: () => Navigator.pop(context, s.id),
-                  ))
-              .toList(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: AlarmSound.all
+                .map((s) => ListTile(
+                      leading: IconButton(
+                        icon: Icon(
+                          playingId == s.id
+                              ? Icons.stop_circle_rounded
+                              : Icons.play_circle_outline_rounded,
+                          color: AppColors.accent,
+                        ),
+                        tooltip: playingId == s.id ? 'Stop preview' : 'Play preview',
+                        onPressed: () async {
+                          if (playingId == s.id) {
+                            await player.stop();
+                            setSheetState(() => playingId = null);
+                            return;
+                          }
+                          await player.stop();
+                          await player.play(AssetSource('sounds/${s.id}.wav'));
+                          setSheetState(() => playingId = s.id);
+                        },
+                      ),
+                      title: Text(s.label),
+                      trailing: s.id == _sound
+                          ? const Icon(Icons.check_rounded,
+                              color: AppColors.accent)
+                          : null,
+                      onTap: () => Navigator.pop(context, s.id),
+                    ))
+                .toList(),
+          ),
         ),
       ),
     );
+    await player.stop();
+    await player.dispose();
     if (choice != null) {
       setState(() => _sound = choice);
       _saveString('pref_sound', choice);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'models/alarm_settings.dart';
 import 'routing/app_router.dart';
 import 'services/alarm_service.dart';
 import 'services/departure_scheduler.dart';
@@ -21,6 +22,7 @@ void main() async {
   // can surface instantly when the trigger fires.
   await AlarmService.instance.init();
   await DepartureScheduler.instance.initTimezone();
+  await AlarmSettings.loadPersistedDefaults();
 
   // Explicit container so notification-tap handlers (which run outside the
   // widget tree) can reach providers like the tracker.

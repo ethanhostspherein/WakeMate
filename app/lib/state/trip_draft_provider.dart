@@ -26,7 +26,7 @@ class TripDraft {
 
   const TripDraft({
     this.destination,
-    this.alarm = AlarmSettings.defaults,
+    required this.alarm,
     this.mode = TripMode.bus,
     this.pnrNumber,
     this.notifyFamily = false,
@@ -69,7 +69,7 @@ class TripDraft {
 
 class TripDraftController extends Notifier<TripDraft> {
   @override
-  TripDraft build() => const TripDraft();
+  TripDraft build() => TripDraft(alarm: AlarmSettings.defaults);
 
   void setDestination(Destination destination) {
     state = state.copyWith(destination: destination);
@@ -136,7 +136,7 @@ class TripDraftController extends Notifier<TripDraft> {
   }
 
   void reset() {
-    state = const TripDraft();
+    state = TripDraft(alarm: AlarmSettings.defaults);
   }
 }
 

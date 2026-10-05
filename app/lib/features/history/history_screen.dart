@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 
+import '../../models/alarm_settings.dart';
 import '../../models/trip.dart';
 import '../../services/user_trips_service.dart';
 import '../../theme/app_colors.dart';
@@ -95,7 +96,11 @@ class _StatsSummary extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _StatItem(value: totalKm.toStringAsFixed(0), label: 'km travelled'),
+          _StatItem(
+              value: AlarmSettings.useMetric
+                  ? totalKm.toStringAsFixed(0)
+                  : (totalKm * 0.621371).toStringAsFixed(0),
+              label: AlarmSettings.useMetric ? 'km travelled' : 'mi travelled'),
           _StatItem(value: '${trips.length}', label: 'trips'),
           _StatItem(value: '$places', label: 'places'),
         ],
@@ -175,7 +180,7 @@ class _HistoryTile extends StatelessWidget {
                       size: 14, color: AppColors.textSecondary),
                   const SizedBox(width: 4),
                   Text(
-                      'Alarm: ${trip.alarmDistanceKm.toStringAsFixed(1)} km',
+                      'Alarm: ${AlarmSettings.formatDistance(trip.alarmDistanceKm)}',
                       style: Theme.of(context).textTheme.labelMedium),
                   if (trip.pnr != null && trip.pnr!.isNotEmpty) ...[
                     const SizedBox(width: AppSpacing.md),
@@ -214,7 +219,7 @@ class _HistoryTile extends StatelessWidget {
               _summaryRow(context, 'PNR Number', trip.pnr!),
             _summaryRow(context, 'Date', _formatDate(trip.createdAt)),
             _summaryRow(context, 'Alarm distance',
-                '${trip.alarmDistanceKm.toStringAsFixed(1)} km'),
+                AlarmSettings.formatDistance(trip.alarmDistanceKm)),
             _summaryRow(
                 context,
                 'Status',
